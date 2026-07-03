@@ -12,6 +12,55 @@ const { getDefaultMode, safeWriteFlag, readFlag, VALID_MODES } = require('./cave
 // selectable via /caveman <arg>.
 const INDEPENDENT_MODES = new Set(['commit', 'review', 'compress']);
 
+const WENYAN_ALIASES = new Set([
+  'wenyan-full', 'wenyan', 'zh', 'zh-cn', 'chinese',
+  '中文', '汉语', '漢語', '文言', '文言文', '古文'
+]);
+const WENYAN_LITE_ALIASES = new Set([
+  'wenyan-lite', 'zh-lite', 'chinese-lite', '中文-lite', '文言-lite', '文言文-lite'
+]);
+const WENYAN_ULTRA_ALIASES = new Set([
+  'wenyan-ultra', 'zh-ultra', 'chinese-ultra', '中文-ultra', '文言-ultra', '文言文-ultra'
+]);
+
+function normalizeModeArg(arg) {
+  const raw = String(arg || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'off' || raw === 'stop' || raw === 'disable') return 'off';
+  if (WENYAN_ALIASES.has(raw)) return 'wenyan';
+  if (WENYAN_LITE_ALIASES.has(raw)) return 'wenyan-lite';
+  if (WENYAN_ULTRA_ALIASES.has(raw)) return 'wenyan-ultra';
+  if (VALID_MODES.includes(raw) && !INDEPENDENT_MODES.has(raw)) return raw;
+  return null;
+}
+
+function asksForWenyanChinese(prompt) {
+  return /(中文|汉语|漢語|文言文|文言|古文)/.test(prompt) &&
+    /(说话|說話|回答|回复|回覆|表达|表達|思考|思维|思維|think|thinking|reason|用|使用|切换|切換|模式|mode)/i.test(prompt);
+}
+
+function asksToDeactivate(prompt) {
+  return /\b(stop|disable|deactivate|turn off)\b.*\bcaveman\b/i.test(prompt) ||
+    /\bcaveman\b.*\b(stop|disable|deactivate|turn off)\b/i.test(prompt) ||
+    /\bnormal mode\b/i.test(prompt) ||
+    /(停止|停用|关闭|關閉|退出|取消|不要|不用).*(caveman|穴居人|文言文|文言|古文)/.test(prompt) ||
+    /(caveman|穴居人|文言文|文言|古文).*(停止|停用|关闭|關閉|退出|取消)/.test(prompt) ||
+    /(恢复|恢復|切回|返回).*(正常|普通).*模式/.test(prompt);
+}
+
+function reinforcementLine(activeMode) {
+  const base = "CAVEMAN MODE ACTIVE (" + activeMode + "). ";
+  if (activeMode.startsWith('wenyan')) {
+    return base +
+      "Use Chinese 文言文 for visible prose, including concise reasoning/thought summaries. " +
+      "Keep technical terms, code, commands, API names, and exact errors verbatim. " +
+      "Code/commits/security: write normal.";
+  }
+  return base +
+    "Drop articles/filler/pleasantries/hedging. Fragments OK. " +
+    "Code/commits/security: write normal.";
+}
+
 const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const flagPath = path.join(claudeDir, '.caveman-active');
 
@@ -27,7 +76,9 @@ process.stdin.on('end', () => {
     // only matched /caveman commands — flag file and statusline stayed out of sync.
     // Also recognize brevity requests ("less tokens", "be brief/terse", "fewer
     // tokens", "shorter answers") — README promises these trigger caveman too.
-    if (/\b(activate|enable|turn on|start|talk like)\b.*\bcaveman\b/i.test(prompt) ||
+    if (asksForWenyanChinese(prompt) && !asksToDeactivate(prompt)) {
+      safeWriteFlag(flagPath, 'wenyan');
+    } else if (/\b(activate|enable|turn on|start|talk like)\b.*\bcaveman\b/i.test(prompt) ||
         /\bcaveman\b.*\b(mode|activate|enable|turn on|start)\b/i.test(prompt) ||
         /\b(less tokens|fewer tokens|be brief|be terse|shorter answers)\b/i.test(prompt)) {
       if (!/\b(stop|disable|turn off|deactivate)\b/i.test(prompt)) {
@@ -83,13 +134,8 @@ process.stdin.on('end', () => {
         // Bare /caveman → activate at configured default
         if (!arg) {
           mode = getDefaultMode();
-        } else if (arg === 'off' || arg === 'stop' || arg === 'disable') {
-          mode = 'off';
-        } else if (arg === 'wenyan-full') {
-          // Canonical alias — config stores as 'wenyan'
-          mode = 'wenyan';
-        } else if (VALID_MODES.includes(arg) && !INDEPENDENT_MODES.has(arg)) {
-          mode = arg;
+        } else {
+          mode = normalizeModeArg(arg);
         }
         // Unknown arg → mode stays null, flag untouched (no silent overwrite)
       }
@@ -102,9 +148,7 @@ process.stdin.on('end', () => {
     }
 
     // Detect deactivation — natural language and slash commands
-    if (/\b(stop|disable|deactivate|turn off)\b.*\bcaveman\b/i.test(prompt) ||
-        /\bcaveman\b.*\b(stop|disable|deactivate|turn off)\b/i.test(prompt) ||
-        /\bnormal mode\b/i.test(prompt)) {
+    if (asksToDeactivate(prompt)) {
       try { fs.unlinkSync(flagPath); } catch (e) {}
     }
 
@@ -124,9 +168,7 @@ process.stdin.on('end', () => {
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: "CAVEMAN MODE ACTIVE (" + activeMode + "). " +
-            "Drop articles/filler/pleasantries/hedging. Fragments OK. " +
-            "Code/commits/security: write normal."
+          additionalContext: reinforcementLine(activeMode)
         }
       }));
     }

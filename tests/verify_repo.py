@@ -350,6 +350,50 @@ def verify_hook_install_flow() -> None:
         )
         ensure((claude_dir / ".caveman-active").read_text(encoding="utf-8") == "ultra", "mode tracker did not record ultra")
 
+        chinese_prompt = subprocess.run(
+            ["node", "src/hooks/caveman-mode-tracker.js"],
+            cwd=ROOT,
+            env={**os.environ, **hook_env},
+            text=True,
+            encoding="utf-8",
+            input='{"prompt":"请使用中文文言文说话与思考"}',
+            capture_output=True,
+            check=True,
+        )
+        ensure(
+            "CAVEMAN MODE ACTIVE (wenyan)" in chinese_prompt.stdout,
+            "Chinese wenyan request should emit wenyan reinforcement",
+        )
+        ensure((claude_dir / ".caveman-active").read_text(encoding="utf-8") == "wenyan", "Chinese wenyan request did not record wenyan")
+
+        chinese_arg_prompt = subprocess.run(
+            ["node", "src/hooks/caveman-mode-tracker.js"],
+            cwd=ROOT,
+            env={**os.environ, **hook_env},
+            text=True,
+            encoding="utf-8",
+            input='{"prompt":"/caveman 中文"}',
+            capture_output=True,
+            check=True,
+        )
+        ensure(
+            "CAVEMAN MODE ACTIVE (wenyan)" in chinese_arg_prompt.stdout,
+            "/caveman 中文 should emit wenyan reinforcement",
+        )
+        ensure((claude_dir / ".caveman-active").read_text(encoding="utf-8") == "wenyan", "/caveman 中文 did not record wenyan")
+
+        subprocess.run(
+            ["node", "src/hooks/caveman-mode-tracker.js"],
+            cwd=ROOT,
+            env={**os.environ, **hook_env},
+            text=True,
+            encoding="utf-8",
+            input='{"prompt":"恢复正常模式"}',
+            capture_output=True,
+            check=True,
+        )
+        ensure(not (claude_dir / ".caveman-active").exists(), "恢复正常模式 should remove flag file")
+
         subprocess.run(
             ["node", "src/hooks/caveman-mode-tracker.js"],
             cwd=ROOT,

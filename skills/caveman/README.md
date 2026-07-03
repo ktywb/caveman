@@ -26,6 +26,7 @@ Auto-clarity rule: caveman drops to normal prose for security warnings, irrevers
 /caveman lite         # lighter compression
 /caveman ultra        # extreme compression
 /caveman wenyan       # classical Chinese
+/caveman 文言文        # same as wenyan
 stop caveman          # back to normal prose
 ```
 

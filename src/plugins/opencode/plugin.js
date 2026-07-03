@@ -74,6 +74,17 @@ const { getDefaultMode, safeWriteFlag, readFlag, VALID_MODES } = config;
 // Modes handled by independent skills — not selectable via /caveman <arg>.
 const INDEPENDENT_MODES = new Set(['commit', 'review', 'compress']);
 
+const WENYAN_ALIASES = new Set([
+  'wenyan-full', 'wenyan', 'zh', 'zh-cn', 'chinese',
+  '中文', '汉语', '漢語', '文言', '文言文', '古文'
+]);
+const WENYAN_LITE_ALIASES = new Set([
+  'wenyan-lite', 'zh-lite', 'chinese-lite', '中文-lite', '文言-lite', '文言文-lite'
+]);
+const WENYAN_ULTRA_ALIASES = new Set([
+  'wenyan-ultra', 'zh-ultra', 'chinese-ultra', '中文-ultra', '文言-ultra', '文言文-ultra'
+]);
+
 // opencode resolves its config dir from $XDG_CONFIG_HOME, else ~/.config/opencode
 // on every platform — including Windows, where it uses %USERPROFILE%\.config\opencode
 // (NOT %APPDATA%). os.homedir() is %USERPROFILE% on win32, so the default branch
@@ -88,9 +99,41 @@ function opencodeConfigDir() {
 const flagPath = path.join(opencodeConfigDir(), '.caveman-active');
 
 function reinforcementLine(mode) {
-  return 'CAVEMAN MODE ACTIVE (' + mode + '). ' +
+  const base = 'CAVEMAN MODE ACTIVE (' + mode + '). ';
+  if (mode.startsWith('wenyan')) {
+    return base +
+      'Use Chinese 文言文 for visible prose, including concise reasoning/thought summaries. ' +
+      'Keep technical terms, code, commands, API names, and exact errors verbatim. ' +
+      'Code/commits/security: write normal.';
+  }
+  return base +
     'Drop articles/filler/pleasantries/hedging. Fragments OK. ' +
     'Code/commits/security: write normal.';
+}
+
+function normalizeModeArg(arg) {
+  const raw = String(arg || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'off' || raw === 'stop' || raw === 'disable') return 'off';
+  if (WENYAN_ALIASES.has(raw)) return 'wenyan';
+  if (WENYAN_LITE_ALIASES.has(raw)) return 'wenyan-lite';
+  if (WENYAN_ULTRA_ALIASES.has(raw)) return 'wenyan-ultra';
+  if (VALID_MODES.includes(raw) && !INDEPENDENT_MODES.has(raw)) return raw;
+  return null;
+}
+
+function asksForWenyanChinese(prompt) {
+  return /(中文|汉语|漢語|文言文|文言|古文)/.test(prompt) &&
+    /(说话|說話|回答|回复|回覆|表达|表達|思考|思维|思維|think|thinking|reason|用|使用|切换|切換|模式|mode)/i.test(prompt);
+}
+
+function asksToDeactivate(prompt) {
+  return /\b(stop|disable|deactivate|turn off)\b.*\bcaveman\b/i.test(prompt) ||
+    /\bcaveman\b.*\b(stop|disable|deactivate|turn off)\b/i.test(prompt) ||
+    /\bnormal mode\b/i.test(prompt) ||
+    /(停止|停用|关闭|關閉|退出|取消|不要|不用).*(caveman|穴居人|文言文|文言|古文)/.test(prompt) ||
+    /(caveman|穴居人|文言文|文言|古文).*(停止|停用|关闭|關閉|退出|取消)/.test(prompt) ||
+    /(恢复|恢復|切回|返回).*(正常|普通).*模式/.test(prompt);
 }
 
 // Parse a prompt for slash-command activation or natural-language toggles.
@@ -108,9 +151,7 @@ function parseModeChange(promptRaw) {
 
   // Natural-language deactivation — checked before activation so "stop talking
   // like caveman" doesn't trip the activation regex.
-  if (/\b(stop|disable|deactivate|turn off)\b.*\bcaveman\b/i.test(prompt) ||
-      /\bcaveman\b.*\b(stop|disable|deactivate|turn off)\b/i.test(prompt) ||
-      /\bnormal mode\b/i.test(prompt)) {
+  if (asksToDeactivate(prompt)) {
     return 'off';
   }
 
@@ -123,13 +164,13 @@ function parseModeChange(promptRaw) {
   const tpl = /^activate caveman mode:[ \t]*(\S*)/.exec(prompt);
   if (tpl) {
     const arg = tpl[1] || '';
-    if (arg === 'off' || arg === 'stop' || arg === 'disable') return 'off';
-    if (arg === 'wenyan-full') return 'wenyan';
-    if (VALID_MODES.includes(arg) && !INDEPENDENT_MODES.has(arg)) return arg;
-    return getDefaultMode();
+    return normalizeModeArg(arg) || getDefaultMode();
   }
 
   // Natural-language activation
+  if (asksForWenyanChinese(prompt)) {
+    return 'wenyan';
+  }
   if (/\b(activate|enable|turn on|start|talk like)\b.*\bcaveman\b/i.test(prompt) ||
       /\bcaveman\b.*\b(mode|activate|enable|turn on|start)\b/i.test(prompt)) {
     const mode = getDefaultMode();
@@ -148,10 +189,9 @@ function parseModeChange(promptRaw) {
     if (cmd === '/caveman-compress') return 'compress';
 
     if (cmd === '/caveman') {
-      if (!arg)                                     return getDefaultMode();
-      if (arg === 'off' || arg === 'stop' || arg === 'disable') return 'off';
-      if (arg === 'wenyan-full')                    return 'wenyan';
-      if (VALID_MODES.includes(arg) && !INDEPENDENT_MODES.has(arg)) return arg;
+      if (!arg) return getDefaultMode();
+      const mode = normalizeModeArg(arg);
+      if (mode) return mode;
       // Unknown arg — leave flag alone. No silent overwrite.
       return null;
     }

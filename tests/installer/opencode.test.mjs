@@ -293,11 +293,22 @@ test('opencode plugin handles /caveman ultra, stop caveman, and session init via
       'Activate caveman mode: wenyan-lite\n\nIf no level given, use full. If "off", deactivate.' }] });
     assert.equal(fs.readFileSync(flagPath, 'utf8'), 'wenyan-lite');
     await handlers['chat.message']({}, { parts: [{ type: 'text', text:
+      'Activate caveman mode: 中文\n\nIf no level given, use full. If "off", deactivate.' }] });
+    assert.equal(fs.readFileSync(flagPath, 'utf8'), 'wenyan');
+    await handlers['chat.message']({}, { parts: [{ type: 'text', text:
       'Activate caveman mode: off\n\nIf no level given, use full. If "off", deactivate.' }] });
     assert.equal(fs.existsSync(flagPath), false, 'expanded template with off should delete the flag');
     await handlers['chat.message']({}, { parts: [{ type: 'text', text:
       'Activate caveman mode: \n\nIf no level given, use full. If "off", deactivate.' }] });
     assert.equal(fs.readFileSync(flagPath, 'utf8'), 'full', 'expanded template without level uses default');
+    await handlers['chat.message']({}, { parts: [{ type: 'text', text: '/caveman ultra' }] });
+    assert.equal(fs.readFileSync(flagPath, 'utf8'), 'ultra');
+
+    // Chinese natural-language request selects wenyan directly.
+    await handlers['chat.message']({}, { parts: [{ type: 'text', text: '请使用中文文言文说话与思考' }] });
+    assert.equal(fs.readFileSync(flagPath, 'utf8'), 'wenyan');
+    await handlers['chat.message']({}, { parts: [{ type: 'text', text: '恢复正常模式' }] });
+    assert.equal(fs.existsSync(flagPath), false, 'Chinese normal-mode request should delete the flag');
     await handlers['chat.message']({}, { parts: [{ type: 'text', text: '/caveman ultra' }] });
     assert.equal(fs.readFileSync(flagPath, 'utf8'), 'ultra');
 
